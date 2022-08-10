@@ -1,0 +1,597 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "7d23e8ac",
+   "metadata": {
+    "_cell_guid": "b1076dfc-b9ad-4769-8c92-a6c4dae69d19",
+    "_uuid": "8f2839f25d086af736a60e9eeb907d3b93b6e0e5",
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:21:39.914333Z",
+     "iopub.status.busy": "2022-08-10T14:21:39.913826Z",
+     "iopub.status.idle": "2022-08-10T14:21:41.811081Z",
+     "shell.execute_reply": "2022-08-10T14:21:41.809779Z"
+    },
+    "papermill": {
+     "duration": 1.907279,
+     "end_time": "2022-08-10T14:21:41.814910",
+     "exception": false,
+     "start_time": "2022-08-10T14:21:39.907631",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "/kaggle/input/titanic/train.csv\n",
+      "/kaggle/input/titanic/test.csv\n",
+      "/kaggle/input/titanic/gender_submission.csv\n"
+     ]
+    }
+   ],
+   "source": [
+    "# This Python 3 environment comes with many helpful analytics libraries installed\n",
+    "# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python\n",
+    "# For example, here's several helpful packages to load\n",
+    "\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import seaborn as sns\n",
+    "import matplotlib.pyplot as plt\n",
+    "from matplotlib.pyplot import rcParams\n",
+    "import os\n",
+    "from sklearn import tree\n",
+    "from sklearn.model_selection import train_test_split\n",
+    "from sklearn.model_selection import GridSearchCV, cross_val_score\n",
+    "from sklearn.ensemble import RandomForestClassifier\n",
+    "from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score\n",
+    "for dirname, _, filenames in os.walk('/kaggle/input'):\n",
+    "    for filename in filenames:\n",
+    "        print(os.path.join(dirname, filename))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "361a6fa7",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:21:41.825334Z",
+     "iopub.status.busy": "2022-08-10T14:21:41.824833Z",
+     "iopub.status.idle": "2022-08-10T14:21:41.899400Z",
+     "shell.execute_reply": "2022-08-10T14:21:41.896878Z"
+    },
+    "papermill": {
+     "duration": 0.082845,
+     "end_time": "2022-08-10T14:21:41.902237",
+     "exception": false,
+     "start_time": "2022-08-10T14:21:41.819392",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "PassengerId    0\n",
+      "Survived       0\n",
+      "Pclass         0\n",
+      "Sex            0\n",
+      "Age            0\n",
+      "SibSp          0\n",
+      "Parch          0\n",
+      "Ticket         0\n",
+      "Fare           0\n",
+      "Embarked       0\n",
+      "dtype: int64\n",
+      "PassengerId    0\n",
+      "Pclass         0\n",
+      "Sex            0\n",
+      "Age            0\n",
+      "SibSp          0\n",
+      "Parch          0\n",
+      "Ticket         0\n",
+      "Fare           0\n",
+      "Embarked       0\n",
+      "dtype: int64\n",
+      "shape of X_train (891, 7)\n",
+      "Shape of Y_train (891,)\n",
+      "Shape of x_test (418, 7)\n"
+     ]
+    }
+   ],
+   "source": [
+    "train_data_ex = pd.read_csv('../input/titanic/train.csv')\n",
+    "test_data_ex = pd.read_csv('../input/titanic/test.csv')\n",
+    "#print(test_data_ex.isnull().sum())\n",
+    "#Dropping the column 'Cabin' as it has too many null values.\n",
+    "# deep copy to copy data and indeces\n",
+    "train_ex = train_data_ex.copy(deep=True)\n",
+    "test_ex = test_data_ex.copy(deep=True)\n",
+    "\n",
+    "#Dealing with missing values\n",
+    "# dropping Cabin\n",
+    "train_ex = train_ex.drop(['Name','Cabin'], axis=1)\n",
+    "test_ex = test_ex.drop(['Name','Cabin'], axis=1)\n",
+    "\n",
+    "# filling the nan values for Age and fare column with the mean \n",
+    "combined_data = [train_ex, test_ex]\n",
+    "for data in combined_data:\n",
+    "    data.Age.fillna(data.Age.mean(), inplace = True)\n",
+    "    data.Fare.fillna(data.Fare.mean(), inplace = True)\n",
+    "    \n",
+    "#filling the nan values of Embarked column with most_frequent value\n",
+    "train_ex['Embarked'] = train_ex['Embarked'].fillna('S')\n",
+    "    \n",
+    "print(train_ex.isnull().sum())\n",
+    "print(test_ex.isnull().sum())\n",
+    "\n",
+    "#Categorical variables:[Sex', 'Ticket', 'Embarked']\n",
+    "#Let's start by converting Sex feature to categorical female=1 and male=0\n",
+    "train_ex.Sex = train_ex.Sex.map({'female':1, 'male':0})\n",
+    "test_ex.Sex = test_ex.Sex.map({'female':1, 'male':0})\n",
+    "\n",
+    "#using map funcion to change the Embarked column S = 1, C = 2, Q = 0\n",
+    "change = {'S':1,'C':2,'Q':0}\n",
+    "train_ex.Embarked = train_ex.Embarked.map(change)\n",
+    "test_ex.Embarked = test_ex.Embarked.map(change)\n",
+    "\n",
+    "#Dropping PassengerId and Ticket column\n",
+    "columns_to_drop = ['PassengerId','Ticket']\n",
+    "train_ex.drop(columns_to_drop, axis = 1, inplace = True)\n",
+    "test_ex.drop(columns_to_drop[1], axis = 1, inplace = True)\n",
+    "\n",
+    "X_train_ex = train_ex.drop(\"Survived\", axis=1)\n",
+    "Y_train_ex = train_ex[\"Survived\"]\n",
+    "X_test_ex = test_ex.drop(\"PassengerId\", axis = 1)\n",
+    "print(\"shape of X_train\",X_train_ex.shape)\n",
+    "print(\"Shape of Y_train\",Y_train_ex.shape)\n",
+    "print(\"Shape of x_test\",X_test_ex.shape)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "8e1245e1",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:21:41.912104Z",
+     "iopub.status.busy": "2022-08-10T14:21:41.911694Z",
+     "iopub.status.idle": "2022-08-10T14:22:02.411418Z",
+     "shell.execute_reply": "2022-08-10T14:22:02.408893Z"
+    },
+    "papermill": {
+     "duration": 20.508768,
+     "end_time": "2022-08-10T14:22:02.415342",
+     "exception": false,
+     "start_time": "2022-08-10T14:21:41.906574",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "2022-08-10 14:21:50.127473: I tensorflow/core/common_runtime/process_util.cc:146] Creating new thread pool with default inter op setting: 2. Tune using inter_op_parallelism_threads for best performance.\n",
+      "2022-08-10 14:21:50.431578: I tensorflow/compiler/mlir/mlir_graph_optimization_pass.cc:185] None of the MLIR Optimization Passes are enabled (registered 2)\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch 1/50\n",
+      "28/28 - 2s - loss: 0.6938 - acc: 0.5006\n",
+      "Epoch 2/50\n",
+      "28/28 - 0s - loss: 0.6715 - acc: 0.6779\n",
+      "Epoch 3/50\n",
+      "28/28 - 0s - loss: 0.6262 - acc: 0.7149\n",
+      "Epoch 4/50\n",
+      "28/28 - 0s - loss: 0.5895 - acc: 0.7104\n",
+      "Epoch 5/50\n",
+      "28/28 - 0s - loss: 0.5552 - acc: 0.7295\n",
+      "Epoch 6/50\n",
+      "28/28 - 0s - loss: 0.5181 - acc: 0.7452\n",
+      "Epoch 7/50\n",
+      "28/28 - 0s - loss: 0.4994 - acc: 0.7598\n",
+      "Epoch 8/50\n",
+      "28/28 - 0s - loss: 0.4980 - acc: 0.7868\n",
+      "Epoch 9/50\n",
+      "28/28 - 0s - loss: 0.4937 - acc: 0.7879\n",
+      "Epoch 10/50\n",
+      "28/28 - 0s - loss: 0.4738 - acc: 0.7957\n",
+      "Epoch 11/50\n",
+      "28/28 - 0s - loss: 0.4868 - acc: 0.7744\n",
+      "Epoch 12/50\n",
+      "28/28 - 0s - loss: 0.4945 - acc: 0.7699\n",
+      "Epoch 13/50\n",
+      "28/28 - 0s - loss: 0.4803 - acc: 0.7901\n",
+      "Epoch 14/50\n",
+      "28/28 - 0s - loss: 0.4824 - acc: 0.7924\n",
+      "Epoch 15/50\n",
+      "28/28 - 0s - loss: 0.4696 - acc: 0.7980\n",
+      "Epoch 16/50\n",
+      "28/28 - 0s - loss: 0.4659 - acc: 0.8070\n",
+      "Epoch 17/50\n",
+      "28/28 - 0s - loss: 0.4610 - acc: 0.8058\n",
+      "Epoch 18/50\n",
+      "28/28 - 0s - loss: 0.4498 - acc: 0.8092\n",
+      "Epoch 19/50\n",
+      "28/28 - 0s - loss: 0.4661 - acc: 0.8036\n",
+      "Epoch 20/50\n",
+      "28/28 - 0s - loss: 0.4614 - acc: 0.7957\n",
+      "Epoch 21/50\n",
+      "28/28 - 0s - loss: 0.4649 - acc: 0.7901\n",
+      "Epoch 22/50\n",
+      "28/28 - 0s - loss: 0.4602 - acc: 0.8025\n",
+      "Epoch 23/50\n",
+      "28/28 - 0s - loss: 0.4859 - acc: 0.7845\n",
+      "Epoch 24/50\n",
+      "28/28 - 0s - loss: 0.4654 - acc: 0.8013\n",
+      "Epoch 25/50\n",
+      "28/28 - 0s - loss: 0.4538 - acc: 0.7957\n",
+      "Epoch 26/50\n",
+      "28/28 - 0s - loss: 0.4551 - acc: 0.8047\n",
+      "Epoch 27/50\n",
+      "28/28 - 0s - loss: 0.4473 - acc: 0.8092\n",
+      "Epoch 28/50\n",
+      "28/28 - 0s - loss: 0.4369 - acc: 0.8159\n",
+      "Epoch 29/50\n",
+      "28/28 - 0s - loss: 0.4484 - acc: 0.7980\n",
+      "Epoch 30/50\n",
+      "28/28 - 0s - loss: 0.4335 - acc: 0.8171\n",
+      "Epoch 31/50\n",
+      "28/28 - 0s - loss: 0.4362 - acc: 0.8025\n",
+      "Epoch 32/50\n",
+      "28/28 - 0s - loss: 0.4353 - acc: 0.8081\n",
+      "Epoch 33/50\n",
+      "28/28 - 0s - loss: 0.4464 - acc: 0.8114\n",
+      "Epoch 34/50\n",
+      "28/28 - 0s - loss: 0.4497 - acc: 0.8058\n",
+      "Epoch 35/50\n",
+      "28/28 - 0s - loss: 0.4344 - acc: 0.8126\n",
+      "Epoch 36/50\n",
+      "28/28 - 0s - loss: 0.4309 - acc: 0.8058\n",
+      "Epoch 37/50\n",
+      "28/28 - 0s - loss: 0.4499 - acc: 0.7980\n",
+      "Epoch 38/50\n",
+      "28/28 - 0s - loss: 0.4376 - acc: 0.8137\n",
+      "Epoch 39/50\n",
+      "28/28 - 0s - loss: 0.4380 - acc: 0.8249\n",
+      "Epoch 40/50\n",
+      "28/28 - 0s - loss: 0.4502 - acc: 0.8103\n",
+      "Epoch 41/50\n",
+      "28/28 - 0s - loss: 0.4385 - acc: 0.8103\n",
+      "Epoch 42/50\n",
+      "28/28 - 0s - loss: 0.4233 - acc: 0.8159\n",
+      "Epoch 43/50\n",
+      "28/28 - 0s - loss: 0.4256 - acc: 0.8204\n",
+      "Epoch 44/50\n",
+      "28/28 - 0s - loss: 0.4316 - acc: 0.8137\n",
+      "Epoch 45/50\n",
+      "28/28 - 0s - loss: 0.4266 - acc: 0.8137\n",
+      "Epoch 46/50\n",
+      "28/28 - 0s - loss: 0.4349 - acc: 0.8126\n",
+      "Epoch 47/50\n",
+      "28/28 - 0s - loss: 0.4330 - acc: 0.8126\n",
+      "Epoch 48/50\n",
+      "28/28 - 0s - loss: 0.4253 - acc: 0.8148\n",
+      "Epoch 49/50\n",
+      "28/28 - 0s - loss: 0.4226 - acc: 0.8193\n",
+      "Epoch 50/50\n",
+      "28/28 - 0s - loss: 0.4268 - acc: 0.8148\n",
+      "[0 0 0 0 0 0 1 0 1 0 0 0 1 0 1 1 0 0 0 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 0 0 0\n",
+      " 1 0 0 0 0 0 1 1 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 1 1 1 1 0 0 1 1 0 0 0\n",
+      " 1 1 0 1 0 1 1 0 0 0 0 0 1 1 1 1 0 0 1 0 0 0 0 0 1 0 1 0 0 0 1 0 0 0 0 0 0\n",
+      " 1 1 1 1 0 0 1 0 1 1 0 1 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 0 0\n",
+      " 0 0 1 0 0 0 0 0 1 1 0 0 1 0 1 0 0 0 0 0 1 1 0 0 0 0 0 1 1 0 1 1 0 0 1 0 1\n",
+      " 0 1 0 0 0 0 0 0 0 1 0 1 1 0 0 0 1 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0 1 0 1 0\n",
+      " 1 0 1 0 0 1 0 0 0 1 0 0 0 0 0 0 1 1 1 1 0 0 0 0 1 0 1 0 1 0 0 0 0 0 0 0 1\n",
+      " 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 1 0 0 0 0 1 1 1 1 1 0 0 0 0 0 0 1 0 0 0 0\n",
+      " 1 0 0 0 0 0 0 0 1 1 0 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 1 0 0 0 0 0 0\n",
+      " 0 0 0 0 0 0 0 0 0 0 1 0 1 0 0 0 1 1 0 0 0 1 0 1 0 0 0 0 0 1 0 1 0 0 1 1 0\n",
+      " 0 1 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 1 0 0 1 0 1 0 0 0 0\n",
+      " 0 1 1 1 1 0 0 1 0 0 0]\n",
+      "Accuracy :  82.27\n"
+     ]
+    }
+   ],
+   "source": [
+    "import tensorflow as tf\n",
+    "import keras \n",
+    "from keras.layers import Dense, Dropout, Input\n",
+    "from keras.models import Sequential\n",
+    "from tensorflow import keras\n",
+    "from tensorflow.keras import layers, callbacks\n",
+    "\n",
+    "#Defining model\n",
+    "model = Sequential()\n",
+    "model.add(Dense(units = 32, input_shape = (7,), activation = 'relu'))\n",
+    "model.add(Dense(units = 64, activation = 'relu', kernel_initializer = 'he_normal', use_bias = False))\n",
+    "model.add(tf.keras.layers.BatchNormalization())\n",
+    "model.add(Dense(units = 128, activation = 'relu',kernel_initializer = 'he_normal', use_bias = False))\n",
+    "model.add(Dropout(0.1))\n",
+    "model.add(Dense(units = 64, activation = 'relu',kernel_initializer = 'he_normal', use_bias = False))\n",
+    "model.add(Dropout(0.1))\n",
+    "model.add(Dense(units = 32, activation = 'relu'))\n",
+    "model.add(Dropout(0.15))\n",
+    "model.add(Dense(units = 16, activation = 'relu'))\n",
+    "model.add(Dense(units = 8, activation = 'relu',kernel_initializer = 'he_normal', use_bias = False))\n",
+    "model.add(Dense(units =1 , activation = 'sigmoid'))\n",
+    "\n",
+    "model.compile(loss = tf.keras.losses.binary_crossentropy, optimizer = tf.keras.optimizers.Adam(),metrics = ['acc'])\n",
+    "model.fit(X_train_ex, Y_train_ex, batch_size = 32, verbose = 2, epochs = 50)\n",
+    "predict_ex = model.predict(X_test_ex)\n",
+    "#since we have use sigmoid activation function in output layer\n",
+    "predict_ex = (predict_ex > 0.5).astype(int).ravel()\n",
+    "print(predict_ex)\n",
+    "from sklearn import metrics\n",
+    "Y_pred_rand_ex= (model.predict(X_train_ex) > 0.5).astype(int)\n",
+    "print('Accuracy : ', np.round(metrics.accuracy_score(Y_train_ex, Y_pred_rand_ex)*100,2))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "a8877c20",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:22:02.440520Z",
+     "iopub.status.busy": "2022-08-10T14:22:02.439406Z",
+     "iopub.status.idle": "2022-08-10T14:22:02.473799Z",
+     "shell.execute_reply": "2022-08-10T14:22:02.471789Z"
+    },
+    "papermill": {
+     "duration": 0.050867,
+     "end_time": "2022-08-10T14:22:02.477062",
+     "exception": false,
+     "start_time": "2022-08-10T14:22:02.426195",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(757, 7)\n",
+      "(757,)\n",
+      "Accuracy score for validation data is: 0.7910447761194029\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<function sklearn.metrics._classification.accuracy_score(y_true, y_pred, *, normalize=True, sample_weight=None)>"
+      ]
+     },
+     "execution_count": 4,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#Decision Tree model\n",
+    "from sklearn import tree\n",
+    "X_train_ex = train_ex.drop(\"Survived\", axis=1)\n",
+    "Y_train_ex = train_ex[\"Survived\"]\n",
+    "X_test_ex = test_ex.drop(\"PassengerId\", axis = 1)\n",
+    "train_X, val_X, train_y, val_y = train_test_split(X_train_ex, Y_train_ex,test_size=0.15, random_state = 0)\n",
+    "print(train_X.shape)\n",
+    "print(train_y.shape)\n",
+    "decision_tree = tree.DecisionTreeClassifier(random_state = 0)\n",
+    "decision_tree.fit(train_X, train_y)\n",
+    "Y_pred = decision_tree.predict(val_X)\n",
+    "Y_pred_test = decision_tree.predict(X_test_ex)\n",
+    "print('Accuracy score for validation data is:', accuracy_score(val_y,Y_pred))\n",
+    "accuracy_score"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "08f0bdf7",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:22:02.499026Z",
+     "iopub.status.busy": "2022-08-10T14:22:02.498226Z",
+     "iopub.status.idle": "2022-08-10T14:22:02.578022Z",
+     "shell.execute_reply": "2022-08-10T14:22:02.576228Z"
+    },
+    "papermill": {
+     "duration": 0.093693,
+     "end_time": "2022-08-10T14:22:02.580865",
+     "exception": false,
+     "start_time": "2022-08-10T14:22:02.487172",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.8223684210526315\n"
+     ]
+    }
+   ],
+   "source": [
+    "#Random Forest model\n",
+    "from sklearn.tree import DecisionTreeRegressor\n",
+    "X_train_ex = train_ex.drop(\"Survived\", axis=1)\n",
+    "Y_train_ex = train_ex[\"Survived\"]\n",
+    "X_test_ex = test_ex.drop(\"PassengerId\", axis = 1)\n",
+    "X_train_r, X_val_r, y_train_r, y_val_r = train_test_split(X_train_ex, Y_train_ex, test_size=0.17, random_state = 0)\n",
+    "rdmf = RandomForestClassifier(n_estimators=20, criterion='entropy')\n",
+    "rdmf.fit(X_train_r, y_train_r)\n",
+    "rdmf_score = rdmf.score(X_val_r, y_val_r)\n",
+    "rdmf_score_tr = rdmf.score(X_train_r, y_train_r)\n",
+    "print(rdmf_score)\n",
+    "y_pred_r = rdmf.predict(X_test_ex)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "a552279e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:22:02.602379Z",
+     "iopub.status.busy": "2022-08-10T14:22:02.601968Z",
+     "iopub.status.idle": "2022-08-10T14:22:02.640158Z",
+     "shell.execute_reply": "2022-08-10T14:22:02.637963Z"
+    },
+    "papermill": {
+     "duration": 0.053043,
+     "end_time": "2022-08-10T14:22:02.643187",
+     "exception": false,
+     "start_time": "2022-08-10T14:22:02.590144",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.7631578947368421\n"
+     ]
+    }
+   ],
+   "source": [
+    "#K- Nearest Neighbours KNN\n",
+    "from sklearn.neighbors import KNeighborsClassifier\n",
+    "knn = KNeighborsClassifier(p=2, n_neighbors=20)\n",
+    "knn.fit(X_train_r, y_train_r)\n",
+    "Y_pred = knn.predict(X_test_ex)\n",
+    "knn_score = knn.score(X_val_r, y_val_r)\n",
+    "knn.score\n",
+    "print(knn_score)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "bb715d6f",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:22:02.664816Z",
+     "iopub.status.busy": "2022-08-10T14:22:02.664388Z",
+     "iopub.status.idle": "2022-08-10T14:22:03.246923Z",
+     "shell.execute_reply": "2022-08-10T14:22:03.244261Z"
+    },
+    "papermill": {
+     "duration": 0.59761,
+     "end_time": "2022-08-10T14:22:03.251252",
+     "exception": false,
+     "start_time": "2022-08-10T14:22:02.653642",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.8486842105263158\n"
+     ]
+    }
+   ],
+   "source": [
+    "from xgboost import XGBClassifier\n",
+    "xgb = XGBClassifier()\n",
+    "xgb.fit(X_train_r, y_train_r)\n",
+    "Y_pred = knn.predict(X_test_ex)\n",
+    "xgb_score = xgb.score(X_val_r, y_val_r)\n",
+    "print(xgb_score)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "5cf09e7f",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-08-10T14:22:03.276083Z",
+     "iopub.status.busy": "2022-08-10T14:22:03.275334Z",
+     "iopub.status.idle": "2022-08-10T14:22:03.330086Z",
+     "shell.execute_reply": "2022-08-10T14:22:03.328849Z"
+    },
+    "papermill": {
+     "duration": 0.069799,
+     "end_time": "2022-08-10T14:22:03.332789",
+     "exception": false,
+     "start_time": "2022-08-10T14:22:03.262990",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "71.71"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Support Vector Machines\n",
+    "from sklearn.svm import SVC, LinearSVC\n",
+    "svc = SVC()\n",
+    "svc.fit(X_train_r, y_train_r)\n",
+    "Y_pred = svc.predict(X_test_ex)\n",
+    "acc_svc = round(svc.score(X_val_r, y_val_r) * 100, 2)\n",
+    "acc_svc"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.12"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 37.290743,
+   "end_time": "2022-08-10T14:22:06.562728",
+   "environment_variables": {},
+   "exception": null,
+   "input_path": "__notebook__.ipynb",
+   "output_path": "__notebook__.ipynb",
+   "parameters": {},
+   "start_time": "2022-08-10T14:21:29.271985",
+   "version": "2.3.4"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
